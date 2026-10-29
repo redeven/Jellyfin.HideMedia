@@ -27,7 +27,7 @@ Hide shows and movies from your Jellyfin Home page without removing them from yo
    - **Name:** `Hide Media`
    - **URL:**
      ```
-     https://raw.githubusercontent.com/<owner>/JellyfinHideMedia/main/manifest.json
+     https://raw.githubusercontent.com/redeven/Jellyfin.HideMedia/main/manifest.json
      ```
 3. Open the **Catalog**, find **Hide Media** and install it.
 4. Restart Jellyfin.
