@@ -44,6 +44,13 @@ Hide shows and movies from your Jellyfin Home page without removing them from yo
 - The context menu and Settings entries are only available in the web client. Other apps still respect the hidden list, since filtering happens on the server, but you need the web client to change it.
 - Hidden items aren't replaced, so a Home row can show fewer items than usual.
 
+## Running the tests
+
+```sh
+dotnet test tests/JellyfinHideMedia.Tests
+cd tests/Web && npm ci && npm test
+```
+
 ## License
 
 Copyright (C) 2026 Redeven
