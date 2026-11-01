@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/redeven/Jellyfin.HideMedia/main/Images/hide-media.png",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Adds a hidden filter to libraries.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/redeven/Jellyfin.HideMedia/releases/download/v1.1.0.0/Jellyfin.HideMedia_1.1.0.0.zip",
+        "checksum": "e01fa22d872680837080916c0647e353",
+        "timestamp": "2026-11-01T22:34:51Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "Initial release.",
         "targetAbi": "12.4.0.0",
