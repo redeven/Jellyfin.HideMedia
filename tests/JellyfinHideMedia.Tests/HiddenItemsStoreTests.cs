@@ -173,6 +173,29 @@ public sealed class HiddenItemsStoreTests : IDisposable
     }
 
     [Fact]
+    public void GetAllHidden_IgnoresSectionSettingsAndOtherUsers()
+    {
+        var item = Guid.NewGuid();
+        _store.Hide(_user, item);
+        _store.Hide(_otherUser, Guid.NewGuid());
+        _store.SaveSettings(_user, new SectionSettings(false, false, false));
+
+        Assert.Equal([item], _store.GetAllHidden(_user));
+        Assert.Empty(_store.GetAllHidden(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void GetAllHidden_ReturnsACopy()
+    {
+        var item = Guid.NewGuid();
+        _store.Hide(_user, item);
+
+        _store.GetAllHidden(_user).Clear();
+
+        Assert.True(_store.IsHidden(_user, item));
+    }
+
+    [Fact]
     public async Task ConcurrentHides_AreAllKept()
     {
         var items = Enumerable.Range(0, 200).Select(_ => Guid.NewGuid()).ToArray();

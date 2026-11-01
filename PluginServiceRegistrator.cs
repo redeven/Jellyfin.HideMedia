@@ -11,6 +11,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<HiddenItemsStore>();
         serviceCollection.AddHostedService<ScriptRegistration>();
-        serviceCollection.Configure<MvcOptions>(options => options.Filters.Add<HomeSectionsFilter>());
+        serviceCollection.Configure<MvcOptions>(options =>
+        {
+            options.Filters.Add<HomeSectionsFilter>();
+            options.Filters.Add<HiddenLibraryFilter>();
+        });
     }
 }

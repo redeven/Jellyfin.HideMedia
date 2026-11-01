@@ -13,7 +13,7 @@ export function fail() {
  * Boots the plugin script in a fresh jsdom window with a fake Jellyfin ApiClient.
  * `routes` maps "METHOD path" to a response value or a function receiving the request.
  */
-export function createClient({ hash = '#/home', routes = {} } = {}) {
+export function createClient({ hash = '#/home', routes = {}, storage = {} } = {}) {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
         url: SERVER + 'web/' + hash,
         runScripts: 'outside-only',
@@ -22,6 +22,18 @@ export function createClient({ hash = '#/home', routes = {} } = {}) {
     const { window } = dom;
     const { document } = window;
     const requests = [];
+    const opened = [];
+    const refreshes = [];
+
+    for (const [key, value] of Object.entries(storage)) {
+        window.localStorage.setItem(key, value);
+    }
+
+    window.XMLHttpRequest.prototype.open = function (method, url) {
+        opened.push(url);
+    };
+
+    document._callbacks = { REFRESH_NEEDED: [event => refreshes.push(event.type)] };
 
     window.ApiClient = {
         getUrl: path => SERVER + path,
@@ -50,6 +62,8 @@ export function createClient({ hash = '#/home', routes = {} } = {}) {
         document,
         requests,
         routes,
+        opened,
+        refreshes,
 
         load() {
             window.eval(source);
@@ -94,6 +108,33 @@ export function createClient({ hash = '#/home', routes = {} } = {}) {
             document.body.appendChild(sheet);
             await client.flush();
             return sheet;
+        },
+
+        /** Mimics the modern layout's filter popover with the "Filters" section expanded. */
+        async openFilterPopover(checked = []) {
+            const popover = document.createElement('div');
+            popover.id = 'filter-popover';
+            popover.innerHTML = '<div class="MuiPaper-root"><div class="MuiAccordionDetails-root"><div class="MuiFormGroup-root">'
+                + ['IsFavorite', 'IsUnplayed', 'IsPlayed', 'IsResumable'].map(value => {
+                    const on = checked.includes(value);
+                    return '<label class="MuiFormControlLabel-root">'
+                        + '<span class="MuiButtonBase-root MuiCheckbox-root' + (on ? ' Mui-checked' : '') + '">'
+                        + '<input class="PrivateSwitchBase-input" type="checkbox" value="' + value + '"' + (on ? ' checked' : '') + '>'
+                        + '<svg data-testid="' + (on ? 'CheckBoxIcon' : 'CheckBoxOutlineBlankIcon') + '"><path d="' + value + '"></path></svg>'
+                        + '</span><span class="MuiTypography-root MuiFormControlLabel-label">' + value + '</span></label>';
+                }).join('')
+                + '</div></div></div>';
+            document.body.appendChild(popover);
+            await client.flush();
+            return popover;
+        },
+
+        hiddenFilter() {
+            return document.querySelector('.hidemedia-filter');
+        },
+
+        xhr(url) {
+            new window.XMLHttpRequest().open('GET', url);
         },
 
         click(element, type = 'click') {

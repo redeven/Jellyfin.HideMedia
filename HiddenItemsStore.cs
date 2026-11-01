@@ -26,6 +26,14 @@ public class HiddenItemsStore
         }
     }
 
+    public HashSet<Guid> GetAllHidden(Guid userId)
+    {
+        lock (_lock)
+        {
+            return Find(userId) is { } entry ? [.. entry.ItemIds] : [];
+        }
+    }
+
     public SectionSettings GetSettings(Guid userId)
     {
         lock (_lock)

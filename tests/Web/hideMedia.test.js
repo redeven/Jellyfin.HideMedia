@@ -114,7 +114,6 @@ describe('context menu entry', () => {
         const openSheet = await c.openActionSheet();
         c.click(c.addCard(MOVIE).querySelector('[data-action="menu"]'));
 
-        // Menu entries carry their own data-id, which must not be mistaken for an item id.
         c.click(openSheet.querySelector('[data-id="refresh"]'), 'contextmenu');
         await c.openActionSheet();
 
@@ -389,5 +388,117 @@ describe('settings', () => {
         c.document.body.dispatchEvent(new c.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
         assert.ok(reachedPage);
+    });
+});
+
+describe('hidden library filter', () => {
+    const LIBRARY = 'f137a2dd21bbc1b99aa5c0f6bf02a805';
+    const OTHER_LIBRARY = '9d7ad6afe9afa2dab1a2f6e00ad28fa6';
+    const LIBRARY_HASH = '#/tv?topParentId=' + LIBRARY;
+    const SERVER = 'http://jellyfin.test/';
+
+    function activeStorage(...ids) {
+        return { 'hidemedia-hidden-filter': JSON.stringify(ids) };
+    }
+
+    test('adds an unchecked "Hidden from Home" checkbox after the existing status filters', async () => {
+        const c = setup({ hash: LIBRARY_HASH });
+
+        const popover = await c.openFilterPopover(['IsFavorite']);
+
+        const label = c.hiddenFilter();
+        assert.ok(label, 'filter was not added');
+        assert.equal(label, popover.querySelector('.MuiFormGroup-root').lastElementChild);
+        assert.equal(label.querySelector('.MuiFormControlLabel-label').textContent, 'Hidden from Home');
+        assert.equal(label.querySelector('input').value, 'HideMediaHidden');
+        assert.equal(label.querySelector('input').checked, false);
+        assert.ok(!label.querySelector('.MuiCheckbox-root').classList.contains('Mui-checked'));
+        assert.equal(label.querySelector('svg'), null);
+        assert.equal(label.querySelector('.material-icons').className, 'material-icons check_box_outline_blank');
+    });
+
+    test('adds the checkbox only once', async () => {
+        const c = setup({ hash: LIBRARY_HASH });
+        const popover = await c.openFilterPopover();
+
+        popover.querySelector('.MuiFormGroup-root').appendChild(c.document.createElement('span'));
+        await c.flush();
+
+        assert.equal(c.document.querySelectorAll('.hidemedia-filter').length, 1);
+    });
+
+    test('shows the checkbox as checked when the filter is on for this library', async () => {
+        const c = setup({ hash: LIBRARY_HASH, storage: activeStorage(LIBRARY) });
+
+        await c.openFilterPopover();
+
+        const label = c.hiddenFilter();
+        assert.equal(label.querySelector('input').checked, true);
+        assert.ok(label.querySelector('.MuiCheckbox-root').classList.contains('Mui-checked'));
+        assert.equal(label.querySelector('.material-icons').className, 'material-icons check_box');
+    });
+
+    test('is not added outside a library page', async () => {
+        const c = setup({ hash: '#/home' });
+
+        await c.openFilterPopover();
+
+        assert.equal(c.hiddenFilter(), null);
+    });
+
+    test('toggling saves the state per library and refreshes the items', async () => {
+        const c = setup({ hash: LIBRARY_HASH, storage: activeStorage(OTHER_LIBRARY) });
+        await c.openFilterPopover();
+        const input = c.hiddenFilter().querySelector('input');
+
+        c.click(input);
+        assert.deepEqual(JSON.parse(c.window.localStorage.getItem('hidemedia-hidden-filter')), [OTHER_LIBRARY, LIBRARY]);
+        assert.ok(c.hiddenFilter().querySelector('.MuiCheckbox-root').classList.contains('Mui-checked'));
+        assert.deepEqual(c.refreshes, ['REFRESH_NEEDED']);
+        assert.equal(c.hiddenFilter().querySelector('.material-icons').className, 'material-icons check_box');
+
+        c.click(input);
+        assert.deepEqual(JSON.parse(c.window.localStorage.getItem('hidemedia-hidden-filter')), [OTHER_LIBRARY]);
+        assert.ok(!c.hiddenFilter().querySelector('.MuiCheckbox-root').classList.contains('Mui-checked'));
+        assert.equal(c.refreshes.length, 2);
+        assert.equal(c.hiddenFilter().querySelector('.material-icons').className, 'material-icons check_box_outline_blank');
+    });
+
+    test('tags the library item requests while the filter is on', () => {
+        const c = setup({ hash: LIBRARY_HASH, storage: activeStorage(LIBRARY) });
+
+        c.xhr(SERVER + 'Items?userId=1&parentId=' + LIBRARY + '&startIndex=0');
+        c.xhr(SERVER + 'Users/1/Items?ParentId=' + LIBRARY);
+
+        assert.deepEqual(c.opened, [
+            SERVER + 'Items?userId=1&parentId=' + LIBRARY + '&startIndex=0&hideMediaHidden=true',
+            SERVER + 'Users/1/Items?ParentId=' + LIBRARY + '&hideMediaHidden=true'
+        ]);
+    });
+
+    test('leaves other requests alone', () => {
+        const c = setup({ hash: LIBRARY_HASH, storage: activeStorage(LIBRARY) });
+        const untouched = [
+            SERVER + 'Items/Filters?parentId=' + LIBRARY,
+            SERVER + 'Items?parentId=' + OTHER_LIBRARY,
+            SERVER + 'Items?ids=' + MOVIE,
+            SERVER + 'Items?parentId=' + LIBRARY + '&hideMediaHidden=true'
+        ];
+
+        untouched.forEach(url => c.xhr(url));
+
+        assert.deepEqual(c.opened, untouched);
+    });
+
+    test('does not tag requests when the filter is off or another page is open', () => {
+        const url = SERVER + 'Items?parentId=' + LIBRARY;
+        const off = setup({ hash: LIBRARY_HASH });
+        off.xhr(url);
+        assert.deepEqual(off.opened, [url]);
+        off.close();
+
+        const elsewhere = setup({ hash: '#/home', storage: activeStorage(LIBRARY) });
+        elsewhere.xhr(url);
+        assert.deepEqual(elsewhere.opened, [url]);
     });
 });

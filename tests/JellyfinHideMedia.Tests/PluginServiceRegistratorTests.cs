@@ -38,4 +38,14 @@ public class PluginServiceRegistratorTests
 
         Assert.IsType<HomeSectionsFilter>(filter.CreateInstance(_services));
     }
+
+    [Fact]
+    public void HiddenLibraryFilter_IsAddedGloballyAndResolvable()
+    {
+        var filter = Assert.Single(
+            _services.GetRequiredService<IOptions<MvcOptions>>().Value.Filters.OfType<TypeFilterAttribute>(),
+            f => f.ImplementationType == typeof(HiddenLibraryFilter));
+
+        Assert.IsType<HiddenLibraryFilter>(filter.CreateInstance(_services));
+    }
 }

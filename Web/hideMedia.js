@@ -9,6 +9,9 @@
     const MENU_ITEM_ID = 'hidemedia-toggle';
     const TRIGGER_WINDOW_MS = 3000;
     const SETTINGS_LINK_CLASS = 'lnkHideMediaPreferences';
+    const FILTER_CLASS = 'hidemedia-filter';
+    const FILTER_STORAGE_KEY = 'hidemedia-hidden-filter';
+    const FILTER_PARAM = 'hideMediaHidden';
     const SECTIONS = [
         { key: 'RecentlyAdded', label: 'Recently Added' },
         { key: 'ContinueWatching', label: 'Continue Watching' },
@@ -21,10 +24,10 @@
         return (id || '').replace(/-/g, '').toLowerCase();
     }
 
-    function detailsPageItemId() {
+    function hashParam(name) {
         const hash = window.location.hash || '';
         const query = hash.indexOf('?');
-        return query === -1 ? null : new URLSearchParams(hash.substring(query + 1)).get('id');
+        return query === -1 ? null : new URLSearchParams(hash.substring(query + 1)).get(name);
     }
 
     function recordTrigger(event) {
@@ -34,7 +37,7 @@
         }
 
         if (target.closest('.btnMoreCommands')) {
-            const id = detailsPageItemId();
+            const id = hashParam('id');
             if (id) {
                 lastTrigger = { id: id, cardEl: null, time: Date.now() };
             }
@@ -53,6 +56,82 @@
 
     document.addEventListener('click', recordTrigger, true);
     document.addEventListener('contextmenu', recordTrigger, true);
+
+    let filterLibraries = readFilterLibraries();
+
+    function readFilterLibraries() {
+        try {
+            const value = JSON.parse(window.localStorage.getItem(FILTER_STORAGE_KEY));
+            return Array.isArray(value) ? value : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function isFilterActive(libraryId) {
+        return filterLibraries.indexOf(normalizeId(libraryId)) !== -1;
+    }
+
+    function setFilterActive(libraryId, active) {
+        const id = normalizeId(libraryId);
+        filterLibraries = filterLibraries.filter(function (l) { return l !== id; });
+        if (active) {
+            filterLibraries.push(id);
+        }
+        try {
+            window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filterLibraries));
+        } catch (e) {
+        }
+    }
+
+    /** Adds the hidden-only flag to the current library's item list requests while its filter is on. */
+    function tagUrl(url) {
+        const libraryId = hashParam('topParentId');
+        if (!libraryId || !isFilterActive(libraryId)) {
+            return url;
+        }
+
+        let parsed;
+        try {
+            parsed = new URL(url, window.location.href);
+        } catch (e) {
+            return url;
+        }
+        if (!/\/Items$/i.test(parsed.pathname) || parsed.searchParams.has(FILTER_PARAM)) {
+            return url;
+        }
+
+        let parentId = null;
+        parsed.searchParams.forEach(function (value, key) {
+            if (key.toLowerCase() === 'parentid') {
+                parentId = value;
+            }
+        });
+        if (normalizeId(parentId) !== normalizeId(libraryId)) {
+            return url;
+        }
+
+        return url + (url.indexOf('?') === -1 ? '?' : '&') + FILTER_PARAM + '=true';
+    }
+
+    const originalOpen = window.XMLHttpRequest.prototype.open;
+    window.XMLHttpRequest.prototype.open = function (method, url) {
+        const args = Array.prototype.slice.call(arguments);
+        args[1] = tagUrl(String(url));
+        return originalOpen.apply(this, args);
+    };
+
+    /** Fires the web client's REFRESH_NEEDED event, which refetches the library's item queries. */
+    function refreshLibrary() {
+        const callbacks = document._callbacks && document._callbacks.REFRESH_NEEDED;
+        if (!callbacks || !callbacks.length) {
+            window.location.reload();
+            return;
+        }
+        callbacks.slice().forEach(function (callback) {
+            callback.call(document, { type: 'REFRESH_NEEDED' });
+        });
+    }
 
     function api(method, path, body) {
         const client = window.ApiClient;
@@ -277,8 +356,63 @@
         homeLink.after(link);
     }
 
+    function renderFilterCheckbox(label, checked) {
+        const input = label.querySelector('input');
+        input.checked = checked;
+        input.parentElement.classList.toggle('Mui-checked', checked);
+
+        const icon = label.querySelector('.material-icons');
+        icon.classList.toggle('check_box', checked);
+        icon.classList.toggle('check_box_outline_blank', !checked);
+    }
+
+    function enhanceFilterPopover() {
+        const libraryId = hashParam('topParentId');
+        const favorite = document.querySelector('#filter-popover input[type="checkbox"][value="IsFavorite"]');
+        if (!libraryId || !favorite) {
+            return;
+        }
+
+        const template = favorite.closest('.MuiFormControlLabel-root');
+        const group = template && template.parentElement;
+        if (!group || group.querySelector('.' + FILTER_CLASS)) {
+            return;
+        }
+
+        const label = template.cloneNode(true);
+        label.classList.add(FILTER_CLASS);
+
+        const input = label.querySelector('input');
+        input.value = 'HideMediaHidden';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-icons';
+        icon.setAttribute('aria-hidden', 'true');
+        const svg = label.querySelector('svg');
+        if (svg) {
+            svg.replaceWith(icon);
+        } else {
+            input.after(icon);
+        }
+
+        const text = label.querySelector('.MuiFormControlLabel-label');
+        if (text) {
+            text.textContent = 'Hidden from Home';
+        }
+
+        renderFilterCheckbox(label, isFilterActive(libraryId));
+        input.addEventListener('change', function () {
+            setFilterActive(libraryId, input.checked);
+            renderFilterCheckbox(label, input.checked);
+            refreshLibrary();
+        });
+
+        group.appendChild(label);
+    }
+
     new MutationObserver(function (mutations) {
         enhanceSettingsMenu();
+        enhanceFilterPopover();
         mutations.forEach(function (mutation) {
             mutation.addedNodes.forEach(function (node) {
                 if (!(node instanceof Element)) {
